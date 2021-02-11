@@ -1,0 +1,16 @@
+{
+    "LogPath": "C:/Users/zazac/Desktop/Keysight_N3300A_DC_Load_scheduler/log_test.txt",
+    "Port": "ASRL8::INSTR",
+    "Delay": "1",
+    "Scheduler": {
+        "Duration [s]": [
+            "5",
+            "10"
+        ],
+        "Current [A]": [
+            "0.5",
+            "0.8"
+        ]
+    },
+    "Repeater": "3"
+}
