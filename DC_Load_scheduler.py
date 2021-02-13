@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QMainWindow, QApplication, QLineEdit,
                              QLCDNumber, QWidget, QFileDialog, QMessageBox,
                              QPushButton, QAction, QComboBox, QVBoxLayout, 
                              QHBoxLayout, QLabel, QDockWidget, QGroupBox,
-                             QProgressBar, QTableWidget, QHeaderView, QTableWidgetItem)
+                             QProgressBar, QTableWidget, QHeaderView)
 from PyQt5.QtGui import QIcon, QPalette, QColor, QDoubleValidator, QIntValidator
 from PyQt5.QtCore import Qt, QDir, QThread, pyqtSignal
 from datetime import datetime
@@ -15,32 +15,25 @@ import time
 threadAccess = True
 # ~~~~~~~~~~~~~~~~~~~~~~~ Scheduler table ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class SchedulerTableView(QTableWidget):
-    def __init__(self, *args):
-        QTableWidget.__init__(self, *args)
-        self.tableRowNumber = 0
+#++++++++++++++++++++++++++++ __init__ ++++++++++++++++++++++++++++++++
+    def __init__(self, parent=None):
+        super(SchedulerTableView, self).__init__(0,2, parent)
+        self.add_del_buttons_index = 0
+        self.selected_Row = 0
         self.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-#++++++++++++++++++++++++++++ Get Data ++++++++++++++++++++++++++++++++
-    def getData(self):
-        self.tableRowNumber = self.rowCount()
-        self.tableColNumber = self.columnCount()
-
-        SchedulerData = {'Duration [s]':[], 'Current [A]' :[]}
-
-        for column, key in zip(range(self.tableColNumber), SchedulerData.keys()):
-            for row in range (self.tableRowNumber-1):
-                SchedulerData[key].append(self.cellWidget(row,column).text())
-
-        return SchedulerData
+        self.verticalHeader().sectionClicked.connect(self.__determineIndex)
+        self.show()
 #++++++++++++++++++++++++++++ Set Data ++++++++++++++++++++++++++++++++
-    def setData(self, data):
-        self.tableRowNumber = len(data["Duration [s]"]) + 1
-        self.setRowCount(self.tableRowNumber)
+    def setData(self, setSchedulerData):
+        self.SchedulerData = setSchedulerData
+        self.add_del_buttons_index = len(self.SchedulerData["Duration [s]"]) + 1
+        self.setRowCount(self.add_del_buttons_index)
 
         horHeaders = []
-        for n, key in enumerate(data.keys()):
+        for n, key in enumerate(self.SchedulerData.keys()):
             horHeaders.append(key)
-            for m, item in enumerate(data[key]):
+            for m, item in enumerate(self.SchedulerData[key]):
                 newitem = QLineEdit()
                 newitem.setAlignment(Qt.AlignCenter)
                 newitem.setValidator(QDoubleValidator())
@@ -51,43 +44,58 @@ class SchedulerTableView(QTableWidget):
 
         self.addButton = QPushButton('Add row')
         self.addButton.setIcon(QIcon('img/addRow.svg'))
-        self.addButton.clicked.connect(self._addRow)
-        self.setCellWidget(self.tableRowNumber-1, 0, self.addButton)
+        self.addButton.clicked.connect(self.__addRow)
+        self.setCellWidget(self.add_del_buttons_index-1, 0, self.addButton)
 
-        self.removeButton = QPushButton('del row')
+        self.removeButton = QPushButton('Remove row')
         self.removeButton.setIcon(QIcon('img/DelRow.svg'))
-        self.removeButton.clicked.connect(self._delRow)
-        self.setCellWidget(self.tableRowNumber-1, 1, self.removeButton)
-#++++++++++++++++++++++++++++ Add Row +++++++++++++++++++++++++++++++++
-    def _addRow(self):
-        self.tableRowNumber = self.rowCount()
-        self.removeCellWidget(self.tableRowNumber-1, 0)
-        self.removeCellWidget(self.tableRowNumber-1, 1)
+        self.removeButton.clicked.connect(self.__delRow)
+        self.setCellWidget(self.add_del_buttons_index-1, 1, self.removeButton)
 
-        selectedRow = self.currentRow()
-        
-        self.insertRow(selectedRow)
+        self.selected_Row = self.rowCount()-1
+#++++++++++++++++++++++++++++ Get Data ++++++++++++++++++++++++++++++++
+    def getData(self):
+        self.add_del_buttons_index = self.rowCount()
+        self.tableColNumber = self.columnCount()
+        SchedulerDataOut = {'Duration [s]':[], 'Current [A]' :[]}
+
+        for column, key in zip(range(self.tableColNumber), self.SchedulerData.keys()):
+            for row in range (self.add_del_buttons_index-1):
+                SchedulerDataOut[key].append(self.cellWidget(row,column).text())
+
+        return SchedulerDataOut
+#++++++++++++++++++++++++++++ Add Row +++++++++++++++++++++++++++++++++
+    def __addRow(self):
+        self.add_del_buttons_index = self.rowCount()
+        self.removeCellWidget(self.add_del_buttons_index, 0)
+        self.removeCellWidget(self.add_del_buttons_index, 1)
+
+        self.insertRow(self.selected_Row)
 
         self.addButton = QPushButton('Add row')
         self.addButton.setIcon(QIcon('img/addRow.svg'))
-        self.addButton.clicked.connect(self._addRow)
-        self.setCellWidget(self.tableRowNumber, 0, self.addButton)
+        self.addButton.clicked.connect(self.__addRow)
+        self.setCellWidget(self.add_del_buttons_index, 0, self.addButton)
 
-        self.removeButton = QPushButton('del row')
+        self.removeButton = QPushButton('Remove row')
         self.removeButton.setIcon(QIcon('img/DelRow.svg'))
-        self.removeButton.clicked.connect(self._delRow)
-        self.setCellWidget(self.tableRowNumber, 1, self.removeButton)
+        self.removeButton.clicked.connect(self.__delRow)
+        self.setCellWidget(self.add_del_buttons_index, 1, self.removeButton)
 
         for i in range(2):
             newitem = QLineEdit()
             newitem.setAlignment(Qt.AlignCenter)
             newitem.setValidator(QDoubleValidator())
-            self.setCellWidget(self.tableRowNumber-1, i, newitem)
+            self.setCellWidget(self.selected_Row, i, newitem)
 #+++++++++++++++++++++++++++ Delete Row +++++++++++++++++++++++++++++++
-    def _delRow(self):
-        selected_Row = self.currentRow()
-        if selected_Row != -1:
-            self.removeRow(selected_Row-1)
+    def __delRow(self):
+        self.add_del_buttons_index = self.rowCount()
+
+        if self.add_del_buttons_index-1 != self.selected_Row:
+            self.removeRow(self.selected_Row)
+#++++++++++++++++++++++++ Determine index +++++++++++++++++++++++++++++
+    def __determineIndex(self):
+        self.selected_Row = self.currentRow()
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~ Custom QComboBox ~~~~~~~~~~~~~~~~~~~~~~~~~~
 class ComboBox(QComboBox):
@@ -132,16 +140,15 @@ class ReadDataThread(QThread):
                     I = float(self.device.query("MEAS:CURR?"))
 
                     read = False
-                    
-                    #V = random.uniform(8,10)
-                    #I = random.uniform(1,3)
                 except pyvisa.errors.VisaIOError:
                     V = 0
                     I = 0
+                    read = False
                     pass
                 except AttributeError:
-                    V = 0
-                    I = 0
+                    V = random.uniform(9,10)
+                    I = random.uniform(10.5,11.5)
+                    read = False
                     pass
             
             P = I * V
@@ -406,7 +413,7 @@ class App(QMainWindow):
         Scheduler = QGroupBox('Scheduler')
         ################## Scheduler table ############################
         SchedulerVLayout = QVBoxLayout()
-        self.SchedulerTable = SchedulerTableView(1, 2)
+        self.SchedulerTable = SchedulerTableView()
 
         self.SchedulerTable.setData(self.SchedulerData)
         ################## Repeater field #############################
