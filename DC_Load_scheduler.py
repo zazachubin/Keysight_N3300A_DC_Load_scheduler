@@ -96,6 +96,7 @@ class ComboBox(QComboBox):
     def showPopup(self):
         self.popupAboutToBeShown.emit()
         super(ComboBox, self).showPopup()
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~ Read Data Thread ~~~~~~~~~~~~~~~~~~~~~~~~~~
 class ReadDataThread(QThread):
     change_value = pyqtSignal(float, float, float)
@@ -154,10 +155,10 @@ class ReadDataThread(QThread):
 
     def stop(self):
         self._isRunning = False
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~ Control Thread ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class ControlThread(QThread):
     finished = pyqtSignal()
-    progress = pyqtSignal(float)
     message = pyqtSignal(str)
     def __init__(self, inst, SchedulerData, repeater, parent=None):
         super(ControlThread, self).__init__()
@@ -207,8 +208,6 @@ class ControlThread(QThread):
             else:
                 CurrentPlan.append("0")
 
-        self.progress.emit(0)
-
         for currentIteration in range(self.repeater):
             if not self._isRunning:
                 break
@@ -238,9 +237,6 @@ class ControlThread(QThread):
                     stop_time = time.time()
                 index += 1
 
-            percent = float(currentIteration+1) * 100 / float(self.repeater)
-            self.progress.emit(percent)
-
         threadAccess = False
         try:
             self.inst.write('CURR 0')
@@ -253,6 +249,42 @@ class ControlThread(QThread):
             print("Done!")
         else:
             print("Stoped !")
+
+    def stop(self):
+        self._isRunning = False
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~ ProgressBar Thread ~~~~~~~~~~~~~~~~~~~~~~~~~
+class ProgressBarThread(QThread):
+    progress = pyqtSignal(float)
+    def __init__(self, SchedulerData, repeater, parent=None):
+        super(ProgressBarThread, self).__init__()
+        self._isRunning = True
+        self.SchedulerData = SchedulerData
+        self.repeater = repeater
+        self.thread_start_time = time.time()
+
+    def run(self):
+        self.progressBarCalc()
+
+    def progressBarCalc(self):
+        DurationPlan = []
+        DurationStr = self.SchedulerData['Duration [s]']
+
+        for item in DurationStr:
+            try:
+                DurationPlan.append(float(item))
+            except ValueError:
+                pass
+
+        self.progress.emit(0)
+
+        full_time = sum(DurationPlan) * self.repeater
+        currentTime = time.time()
+        while(currentTime-self.thread_start_time <= full_time):
+            currentTime = time.time()
+            percent = (currentTime-self.thread_start_time)*100/full_time
+            self.progress.emit(percent)
+            time.sleep(0.5)
 
     def stop(self):
         self._isRunning = False
@@ -377,7 +409,6 @@ class App(QMainWindow):
         self.SchedulerTable = SchedulerTableView(1, 2)
 
         self.SchedulerTable.setData(self.SchedulerData)
-
         ################## Repeater field #############################
         onlyInt = QIntValidator()
         self.Repeater = QLineEdit()
@@ -462,16 +493,19 @@ class App(QMainWindow):
                 self.selected_inst = self.device.open_resource(self.PortSelector.currentText())
             except pyvisa.errors.VisaIOError:
                 self.selected_inst = ""
-            self.thread1 = ReadDataThread(self.selected_inst, self.delay.text())
-            self.thread1.change_value.connect(self.viewData)
 
             self.SchedulerData = self.SchedulerTable.getData()
             self.config['Repeater'] = self.Repeater.text()
 
+            self.thread1 = ReadDataThread(self.selected_inst, self.delay.text())
+            self.thread1.change_value.connect(self.viewData)
+
             self.thread2 = ControlThread(self.selected_inst, self.SchedulerData, int(self.config['Repeater']))
             self.thread2.message.connect(self.statuseMessage)
-            self.thread2.progress.connect(self.viewProgressBar)
             self.thread2.finished.connect(self.finish)
+
+            self.thread3 = ProgressBarThread(self.SchedulerData, int(self.config['Repeater']))
+            self.thread3.progress.connect(self.viewProgressBar)
 
             try:
                 self.f = open(self._filePath,"w+")
@@ -484,19 +518,24 @@ class App(QMainWindow):
             self._alreadyRun = True
             self.thread1.start()
             self.thread2.start()
+            self.thread3.start()
             self.statuseMessage("Running")
 # ++++++++++++++++++++++++++++++ Stop +++++++++++++++++++++++++++++++++
     def stop(self):
         self._alreadyRun = False
         self._stop = True
-        self.thread1.stop()
-        self.thread2.stop()
-        self.statuseMessage("Stop")
+        try:
+            self.thread1.stop()
+            self.thread2.stop()
+            self.thread3.stop()
+            self.statuseMessage("Stop")
+        except AttributeError:
+            pass
 # +++++++++++++++++++++++++++++ Finish +++++++++++++++++++++++++++++++++
     def finish(self):
         self.stop()
         self.statuseMessage("Finish")
-# +++++++++++++++++++++++++++ View data +++++++++++++++++++++++++++++++
+# ++++++++++++++++++++++++++++ View data +++++++++++++++++++++++++++++++
     def viewData(self, Voltage, Current, Power):
         timestampStr = str(datetime.fromtimestamp(datetime.utcnow().timestamp()))
 
